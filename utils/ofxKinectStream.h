@@ -4,7 +4,7 @@
 
 #include "ofxTimebasedStream.h"
 
-class ofxKinectStreamRecorder : ofThread
+class ofxKinectStreamRecorder : public ofThread
 {
 	struct KinectFrame
 	{
@@ -15,46 +15,46 @@ class ofxKinectStreamRecorder : ofThread
 	
 public:
 	
-	void open(string filename)
+	ofxKinectStreamRecorder()
 	{
+		recording = false;
+	}
+	
+	~ofxKinectStreamRecorder()
+	{
+		stream.close();
+	}
+	
+	void start(string filename)
+	{
+		stop();
+		
 		memset(&frame, 0, sizeof(KinectFrame));
 		
 		filename = ofToDataPath(filename);
 		stream.open(filename);
-	}
-	
-	void close()
-	{
-		waitForThread();
-	}
-	
-	void start()
-	{
-		stop();
-		
+
 		recordingStartTime = ofGetElapsedTimef();
 		writeFrameCount = 0;
 		
 		startThread(true, false);
+		
+		recording = true;
 	}
 	
 	void stop()
 	{
+		recording = false;
+		
 		if (isThreadRunning())
-		{
-			stopThread();
-		}
-	}
-	
-	void setRecording(bool yn)
-	{
-		if (yn) start();
-		else stop();
+			waitForThread();
+		
+		stream.close();
 	}
 	
 	bool isRecording()
 	{
-		return isThreadRunning();
+		return recording;
 	}
 	
 	void addFrame(unsigned char *rgb, unsigned short *raw_depth)
@@ -79,6 +79,7 @@ protected:
 	
 	bool hasNewFrame;
 	KinectFrame frame;
+	bool recording;
 	
 	float recordingStartTime;
 	ofxTimebasedStream stream;
@@ -115,16 +116,13 @@ class ofxKinectStreamPlayer
 	
 public:
 	
-	void init()
-	{
-		video.allocate(640, 480, OF_IMAGE_COLOR);
-		depth.allocate(640, 480, OF_IMAGE_GRAYSCALE);
-	}
-	
 	void open(string path)
 	{
 		path = ofToDataPath(path);
 		stream.open(path);
+		
+		video.allocate(640, 480, OF_IMAGE_COLOR);
+		depth.allocate(640, 480, OF_IMAGE_GRAYSCALE);
 	}
 	
 	void close()
@@ -135,6 +133,7 @@ public:
 	void play()
 	{
 		currentPlayHead = 0;
+		playStartTime = ofGetElapsedTimef();
 		playing = true;
 	}
 	
@@ -152,21 +151,23 @@ public:
 	{
 		if (playing)
 		{
-			float d = ofGetElapsedTimef() - lastUpdateTime;
-			currentPlayHead += d;
-			
-			float t = stream.getPacketTimestamp(currentPlayHead);
-			frameNew = t != streamFrameTime;
-			streamFrameTime = t;
+			float d = ofGetElapsedTimef() - playStartTime;
+			float t = stream.getPacketTimestamp(d);
 			
 			if (frameNew)
 			{
-				stream.read(currentPlayHead, &frame, sizeof(KinectFrame));
+				stream.read(d, &frame, sizeof(KinectFrame));
 				video.setFromPixels(frame.rgb, 640, 480, OF_IMAGE_COLOR);
-				depth.setFromPixels(frame.raw_depth, 640, 480, OF_IMAGE_GRAYSCALE);
+				
+				static unsigned char depth8[640 * 480];
+				
+				for (int i = 0; i < 640 * 480; i++)
+				{
+					depth8[i] = ofMap(frame.raw_depth[i], 0, 2048, 0, 255);
+				}
+				
+				depth.setFromPixels(depth8, 640, 480, OF_IMAGE_GRAYSCALE);
 			}
-			
-			lastUpdateTime = ofGetElapsedTimef();
 		}
 	}
 	
@@ -186,10 +187,11 @@ private:
 	KinectFrame frame;
 	
 	ofImage video;
-	ofShortImage depth;
+	ofImage depth;
 	
 	bool playing, frameNew;
 	float lastUpdateTime, currentPlayHead;
+	float playStartTime;
 	float streamFrameTime;
 	
 };

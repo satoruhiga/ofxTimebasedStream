@@ -154,20 +154,17 @@ public:
 			float d = ofGetElapsedTimef() - playStartTime;
 			float t = stream.getPacketTimestamp(d);
 			
-			if (frameNew)
+			stream.read(d, &frame, sizeof(KinectFrame));
+			video.setFromPixels(frame.rgb, 640, 480, OF_IMAGE_COLOR);
+			
+			static unsigned char depth8[640 * 480];
+			
+			for (int i = 0; i < 640 * 480; i++)
 			{
-				stream.read(d, &frame, sizeof(KinectFrame));
-				video.setFromPixels(frame.rgb, 640, 480, OF_IMAGE_COLOR);
-				
-				static unsigned char depth8[640 * 480];
-				
-				for (int i = 0; i < 640 * 480; i++)
-				{
-					depth8[i] = ofMap(frame.raw_depth[i], 0, 2048, 0, 255);
-				}
-				
-				depth.setFromPixels(depth8, 640, 480, OF_IMAGE_GRAYSCALE);
+				depth8[i] = ofMap(frame.raw_depth[i], 0, 2048, 0, 255);
 			}
+			
+			depth.setFromPixels(depth8, 640, 480, OF_IMAGE_GRAYSCALE);
 		}
 	}
 	

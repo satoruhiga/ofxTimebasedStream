@@ -30,6 +30,7 @@ public:
 		ifs.open(path.c_str(), ios::in | ios::binary);
 		ofs.open(path.c_str(), ios::app | ios::binary);
 		
+		// FIXME: too heavy operation on huge file! (ex. over 10GB~
 		rebuildCache();
 	}
 	

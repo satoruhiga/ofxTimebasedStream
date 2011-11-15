@@ -18,6 +18,8 @@ namespace ofxKinectStream
 			
 			depthImage.setUseTexture(false);
 			depthImage.allocate(640, 470, OF_IMAGE_GRAYSCALE);
+			
+			recording = false;
 		}
 		
 		~Recorder()

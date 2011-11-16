@@ -7,7 +7,7 @@
 namespace ofxKinectStream
 {
 	
-	class Recorder : public ofThread
+	class Recorder : public ofThread, public ofxTimebasedStream::Writer
 	{
 	public:
 		
@@ -31,10 +31,11 @@ namespace ofxKinectStream
 		{
 			stop();
 			
-			stream.open(filename);
+			filename = ofToString(filename);
+			ofxTimebasedStream::Writer::open(filename);
 			
 			recordingStartTime = ofGetElapsedTimef();
-			writeFrameCount = 0;
+			frameNum = 0;
 			
 			startThread(true, false);
 			
@@ -48,15 +49,18 @@ namespace ofxKinectStream
 			if (isThreadRunning())
 				waitForThread();
 			
-			stream.close();
+			ofxTimebasedStream::Writer::close();
 		}
 		
-		bool isRecording()
+		inline bool isRecording()
 		{
 			return recording;
 		}
 		
-		int getWriteFrameCount() const { return writeFrameCount; }
+		inline int getFrameNum() const
+		{
+			return frameNum;
+		}
 		
 		void addFrame(unsigned char *rgb, unsigned short *raw_depth)
 		{
@@ -78,13 +82,12 @@ namespace ofxKinectStream
 		
 	protected:
 		
-		int writeFrameCount;
+		int frameNum;
 		
 		bool hasNewFrame;
 		bool recording;
 		
 		float recordingStartTime;
-		ofxTimebasedStream::Writer stream;
 		
 		float writeTimestamp;
 		ofImage colorImage;
@@ -113,10 +116,10 @@ namespace ofxKinectStream
 					ost.write((char*)&len, sizeof(size_t));
 					ost << buffer;
 
-					stream.write(writeTimestamp, ost.str());
+					write(writeTimestamp, ost.str());
 					
 					hasNewFrame = false;
-					writeFrameCount++;
+					frameNum++;
 					
 					unlock();
 				}
@@ -128,10 +131,19 @@ namespace ofxKinectStream
 	};
 	
 	
-	class Player
+	class Player : public ofxTimebasedStream::Reader
 	{
 	public:
 		
+		ofImage colorImage;
+		ofShortImage depthImage;
+		
+		Player()
+		{
+			frameNum = 0;
+			playing = false;
+		}
+
 		~Player()
 		{
 			close();
@@ -139,24 +151,19 @@ namespace ofxKinectStream
 		
 		void open(string path)
 		{
-			path = ofToDataPath(path);
-			stream.open(path);
+			ofxTimebasedStream::Reader::open(path);
 			
-			if (stream)
+			if (*this)
 			{
 				colorImage.allocate(640, 480, OF_IMAGE_COLOR);
 				depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
 			}
-		}
-		
-		void close()
-		{
-			stream.close();
+			
+			rewind();
 		}
 		
 		void play()
 		{
-			playStartTime = ofGetElapsedTimef();
 			playing = true;
 		}
 		
@@ -165,36 +172,63 @@ namespace ofxKinectStream
 			playing = false;
 		}
 		
-		bool isFrameNew()
+		inline bool isPlaying() const
+		{
+			return playing;
+		}
+		
+		void rewind()
+		{
+			ofxTimebasedStream::Reader::rewind();
+			
+			playStartTime = ofGetElapsedTimef();
+			playHeadTime = 0;
+			frameNum = 0;
+		}
+		
+		inline bool isFrameNew() const
 		{
 			return frameNew;
 		}
 		
-		float getPosition()
+		inline int getFrameNum() const
 		{
-			return stream.timestamp();
+			return frameNum;
 		}
 		
 		void update()
 		{
-			if (stream && playing)
+			if (*this && playing)
 			{
-				float d = ofGetElapsedTimef() - playStartTime;
+				playHeadTime += ofGetLastFrameTime();
 				
-				while (d > stream.timestamp())
+				while (playHeadTime > getTimestamp())
 				{
 					// skip to seek head
-					stream.nextFrame();
+					if (!nextFrame()) break;
+					frameNum++;
+				}
+				
+				if (isEof())
+				{
+					if (isLoop())
+					{
+						rewind();
+					}
+					else
+					{
+						playing = false;
+					}
 				}
 				
 				string data;
 				string buffer;
 				ofBuffer ofbuf;
-				stream.getData(data);
+				getData(data);
 				
 				istringstream ist(data);
 				
-				size_t len;
+				size_t len = 0;
 				
 				ist.read((char*)&len, sizeof(size_t));
 				buffer.resize(len);
@@ -227,15 +261,16 @@ namespace ofxKinectStream
 			depthImage.draw(x, y);
 		}
 		
+		void setLoop(bool yn) { loop = yn; }
+		bool isLoop() const { return loop; }
+		
 	private:
-		
-		ofxTimebasedStream::Reader stream;
-		
-		ofImage colorImage;
-		ofShortImage depthImage;
 		
 		bool playing, frameNew;
 		float playStartTime;
+		float playHeadTime;
+		int frameNum;
+		bool loop;
 		
 	};
 	

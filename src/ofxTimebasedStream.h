@@ -73,6 +73,10 @@ namespace ofxTimebasedStream
 		
 	public:
 		
+		Reader()
+		{
+		}
+		
 		~Reader()
 		{
 			close();
@@ -100,6 +104,8 @@ namespace ofxTimebasedStream
 		
 		void rewind()
 		{
+			ifs.clear();
+			
 			ifs.seekg(0, std::ios::beg);
 			offset = 0;
 			
@@ -109,13 +115,15 @@ namespace ofxTimebasedStream
 			ifs.seekg(0, std::ios::beg);
 		}
 		
-		float timestamp() const
+		inline float getTimestamp() const
 		{
 			return p.timestamp;
 		}
 		
-		float nextFrame()
+		bool nextFrame()
 		{
+			if (isEof()) return false;
+			
 			ifs.read((char*)&p.timestamp, sizeof(float));
 			ifs.read((char*)&p.length, sizeof(size_t));
 			
@@ -123,7 +131,12 @@ namespace ofxTimebasedStream
 			ifs.read((char*)data.data(), p.length);
 
 			offset += p.getHeaderOffset() + p.length;
-			return p.timestamp;
+			return true;
+		}
+		
+		inline bool isEof()
+		{
+			return ifs.eof();
 		}
 		
 		void getData(string &data_)

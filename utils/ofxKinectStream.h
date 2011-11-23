@@ -6,243 +6,244 @@
 
 namespace ofxKinectStream
 {
-	
-	class Recorder : public ofThread, public ofxTimebasedStream::Writer
+
+class Recorder : public ofThread, public ofxTimebasedStream::Writer
+{
+public:
+
+	Recorder()
 	{
-	public:
-		
-		Recorder()
+		colorImage.setUseTexture(false);
+		colorImage.allocate(640, 480, OF_IMAGE_COLOR);
+
+		depthImage.setUseTexture(false);
+		depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
+
+		recording = false;
+	}
+
+	~Recorder()
+	{
+		stop();
+	}
+
+	void start(string filename)
+	{
+		stop();
+
+		filename = ofToString(filename);
+		ofxTimebasedStream::Writer::open(filename);
+
+		recordingStartTime = ofGetElapsedTimef();
+		frameNum = 0;
+
+		startThread(true, false);
+
+		recording = true;
+	}
+
+	void stop()
+	{
+		recording = false;
+
+		if (isThreadRunning())
+			waitForThread();
+
+		ofxTimebasedStream::Writer::close();
+	}
+
+	inline bool isRecording()
+	{
+		return recording;
+	}
+
+	inline int getFrameNum() const
+	{
+		return frameNum;
+	}
+
+	void addFrame(unsigned char *rgb, unsigned short *raw_depth)
+	{
+		if (!isRecording()) return;
+
+		if (lock())
 		{
-			colorImage.setUseTexture(false);
-			colorImage.allocate(640, 480, OF_IMAGE_COLOR);
-			
-			depthImage.setUseTexture(false);
-			depthImage.allocate(640, 470, OF_IMAGE_GRAYSCALE);
-			
-			recording = false;
+			writeTimestamp = ofGetElapsedTimef() - recordingStartTime;
+
+			colorImage.setFromPixels(rgb, 640, 480, OF_IMAGE_COLOR);
+			depthImage.setFromPixels(raw_depth, 640, 480, OF_IMAGE_GRAYSCALE);
+
+			if (hasNewFrame) ofLogError("ofxKinectStream::Recorder", "drop frame");
+			hasNewFrame = true;
+
+			unlock();
 		}
-		
-		~Recorder()
+	}
+
+protected:
+
+	int frameNum;
+
+	bool hasNewFrame;
+	bool recording;
+
+	float recordingStartTime;
+
+	float writeTimestamp;
+	ofImage colorImage;
+	ofShortImage depthImage;
+
+	void threadedFunction()
+	{
+		while (isThreadRunning())
 		{
-			stop();
-		}
-		
-		void start(string filename)
-		{
-			stop();
-			
-			filename = ofToString(filename);
-			ofxTimebasedStream::Writer::open(filename);
-			
-			recordingStartTime = ofGetElapsedTimef();
-			frameNum = 0;
-			
-			startThread(true, false);
-			
-			recording = true;
-		}
-		
-		void stop()
-		{
-			recording = false;
-			
-			if (isThreadRunning())
-				waitForThread();
-			
-			ofxTimebasedStream::Writer::close();
-		}
-		
-		inline bool isRecording()
-		{
-			return recording;
-		}
-		
-		inline int getFrameNum() const
-		{
-			return frameNum;
-		}
-		
-		void addFrame(unsigned char *rgb, unsigned short *raw_depth)
-		{
-			if (!isRecording()) return;
-			
-			if (lock())
+			if (hasNewFrame && lock())
 			{
-				writeTimestamp = ofGetElapsedTimef() - recordingStartTime;
-				
-				colorImage.setFromPixels(rgb, 640, 480, OF_IMAGE_COLOR);
-				depthImage.setFromPixels(raw_depth, 640, 480, OF_IMAGE_GRAYSCALE);
-				
-				if (hasNewFrame) ofLogError("ofxKinectStream::Recorder", "drop frame");
-				hasNewFrame = true;
-				
+				size_t len = 0;
+				ofBuffer buffer;
+				ostringstream ost;
+				Poco::BinaryWriter writer(ost, Poco::BinaryWriter::NATIVE_BYTE_ORDER);
+
+				ofSaveImage(colorImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_JPEG);
+				len = buffer.size();
+
+				writer << len;
+				writer << buffer;
+
+				ofSaveImage(depthImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_TIFF);
+				len = buffer.size();
+
+				writer << len;
+				writer << buffer;
+
+				write(writeTimestamp, ost.str());
+
+				hasNewFrame = false;
+				frameNum++;
+
 				unlock();
 			}
+
+			ofSleepMillis(1);
 		}
-		
-	protected:
-		
-		int frameNum;
-		
-		bool hasNewFrame;
-		bool recording;
-		
-		float recordingStartTime;
-		
-		float writeTimestamp;
-		ofImage colorImage;
-		ofShortImage depthImage;
-		
-		void threadedFunction()
-		{
-			while (isThreadRunning())
-			{
-				if (hasNewFrame && lock())
-				{
-					size_t len;
-					ofBuffer buffer;
-					ostringstream ost;
-					
-					ofSaveImage(colorImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_JPEG);
-					len = buffer.size();
-					
-					ost.write((char*)&len, sizeof(size_t));
-					ost << buffer;
+	}
 
-					
-					ofSaveImage(depthImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_TIFF);
-					len = buffer.size();
+};
 
-					ost.write((char*)&len, sizeof(size_t));
-					ost << buffer;
+class Player : public ofxTimebasedStream::Reader
+{
+public:
 
-					write(writeTimestamp, ost.str());
-					
-					hasNewFrame = false;
-					frameNum++;
-					
-					unlock();
-				}
-				
-				ofSleepMillis(1);
-			}
-		}
-		
-	};
-	
-	
-	class Player : public ofxTimebasedStream::Reader
+	ofImage colorImage;
+	ofShortImage depthImage;
+
+	Player()
 	{
-	public:
-		
-		ofImage colorImage;
-		ofShortImage depthImage;
-		
-		Player()
+		frameNum = 0;
+		playing = false;
+	}
+
+	~Player()
+	{
+		close();
+	}
+
+	void open(string path)
+	{
+		ofxTimebasedStream::Reader::open(path);
+
+		if (*this)
 		{
-			frameNum = 0;
-			playing = false;
+			colorImage.allocate(640, 480, OF_IMAGE_COLOR);
+			depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
 		}
 
-		~Player()
+		rewind();
+	}
+
+	void play()
+	{
+		playing = true;
+	}
+
+	void stop()
+	{
+		playing = false;
+	}
+
+	inline bool isPlaying() const
+	{
+		return playing;
+	}
+
+	void rewind()
+	{
+		ofxTimebasedStream::Reader::rewind();
+
+		playStartTime = ofGetElapsedTimef();
+		playHeadTime = 0;
+		frameNum = 0;
+	}
+
+	inline bool isFrameNew() const
+	{
+		return frameNew;
+	}
+
+	inline int getFrameNum() const
+	{
+		return frameNum;
+	}
+
+	void update()
+	{
+		if (*this && playing)
 		{
-			close();
-		}
-		
-		void open(string path)
-		{
-			ofxTimebasedStream::Reader::open(path);
+			//
+			// read stream
+			//
 			
-			if (*this)
+			string data;
+			playHeadTime += ofGetLastFrameTime();
+			
+			while (playHeadTime > getTimestamp())
 			{
-				colorImage.allocate(640, 480, OF_IMAGE_COLOR);
-				depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
+				// skip to seek head
+				if (!nextFrame(data)) break;
+				frameNum++;
+			}
+
+			if (isEof())
+			{
+				if (isLoop())
+				{
+					rewind();
+				}
+				else
+				{
+					playing = false;
+				}
 			}
 			
-			rewind();
-		}
-		
-		void play()
-		{
-			playing = true;
-		}
-		
-		void stop()
-		{
-			playing = false;
-		}
-		
-		inline bool isPlaying() const
-		{
-			return playing;
-		}
-		
-		void rewind()
-		{
-			ofxTimebasedStream::Reader::rewind();
-			
-			playStartTime = ofGetElapsedTimef();
-			playHeadTime = 0;
-			frameNum = 0;
-		}
-		
-		inline bool isFrameNew() const
-		{
-			return frameNew;
-		}
-		
-		inline int getFrameNum() const
-		{
-			return frameNum;
-		}
-		
-		void update()
-		{
-			if (*this && playing)
+			if (!data.empty())
 			{
-				playHeadTime += ofGetLastFrameTime();
-				
-				while (playHeadTime > getTimestamp())
-				{
-					// skip to seek head
-					if (!nextFrame()) break;
-					frameNum++;
-				}
-				
-				if (isEof())
-				{
-					if (isLoop())
-					{
-						rewind();
-					}
-					else
-					{
-						playing = false;
-					}
-				}
-				
-				string data;
-				string buffer;
-				ofBuffer ofbuf;
-				getData(data);
-				
 				istringstream ist(data);
+				Poco::BinaryReader reader(ist, Poco::BinaryReader::NATIVE_BYTE_ORDER);
 				
 				size_t len = 0;
-				
-				ist.read((char*)&len, sizeof(size_t));
-				buffer.resize(len);
-				ist.read((char*)buffer.data(), len);
+				string buffer;
+				ofBuffer ofbuf;
+
+				reader >> len;
+				reader.readRaw(len, buffer);
 				
 				ofbuf.set(buffer.data(), buffer.size());
 				
 				ofLoadImage(colorImage.getPixelsRef(), ofbuf);
 				colorImage.update();
-
 				
-				ist.read((char*)&len, sizeof(size_t));
-				buffer.resize(len);
-				ist.read((char*)buffer.data(), len);
+				reader >> len;
+				reader.readRaw(len, buffer);
 				
 				ofbuf.set(buffer.data(), buffer.size());
 				
@@ -250,31 +251,29 @@ namespace ofxKinectStream
 				depthImage.update();
 			}
 		}
-		
-		void draw(int x, int y)
-		{
-			colorImage.draw(x, y);
-		}
-		
-		void drawDepth(int x, int y)
-		{
-			depthImage.draw(x, y);
-		}
-		
-		void setLoop(bool yn) { loop = yn; }
-		bool isLoop() const { return loop; }
-		
-	private:
-		
-		bool playing, frameNew;
-		float playStartTime;
-		float playHeadTime;
-		int frameNum;
-		bool loop;
-		
-	};
-	
-}
+	}
 
-/*
-*/
+	void draw(int x, int y)
+	{
+		colorImage.draw(x, y);
+	}
+
+	void drawDepth(int x, int y)
+	{
+		depthImage.draw(x, y);
+	}
+
+	void setLoop(bool yn){ loop = yn; }
+	bool isLoop() const { return loop; }
+
+private:
+
+	bool playing, frameNew;
+	float playStartTime;
+	float playHeadTime;
+	int frameNum;
+	bool loop;
+
+};
+
+}

@@ -69,7 +69,6 @@ namespace ofxTimebasedStream
 		istream::off_type offset;
 		
 		Packet p;
-		string data;
 		
 	public:
 		
@@ -120,7 +119,7 @@ namespace ofxTimebasedStream
 			return p.timestamp;
 		}
 		
-		bool nextFrame()
+		bool nextFrame(string &data)
 		{
 			if (isEof()) return false;
 			
@@ -137,11 +136,6 @@ namespace ofxTimebasedStream
 		inline bool isEof()
 		{
 			return ifs.eof();
-		}
-		
-		void getData(string &data_)
-		{
-			data_ = data;
 		}
 		
 		operator bool()

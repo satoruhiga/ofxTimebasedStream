@@ -17,7 +17,7 @@ namespace ofxKinectStream
 			colorImage.allocate(640, 480, OF_IMAGE_COLOR);
 			
 			depthImage.setUseTexture(false);
-			depthImage.allocate(640, 470, OF_IMAGE_GRAYSCALE);
+			depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
 			
 			recording = false;
 		}
@@ -198,56 +198,65 @@ namespace ofxKinectStream
 		
 		void update()
 		{
-			if (*this && playing)
+			frameNew = false;
+			
+			if (playing)
 			{
 				playHeadTime += ofGetLastFrameTime();
 				
+				string data;
+
+				// skip to seek head
 				while (playHeadTime > getTimestamp())
 				{
-					// skip to seek head
-					if (!nextFrame()) break;
-					frameNum++;
+					if (!nextFrame(data))
+					{
+						if (isLoop())
+						{
+							rewind();
+						}
+						else
+						{
+							playing = false;
+						}
+						
+						data.clear();
+						
+						break;
+					}
 				}
 				
-				if (isEof())
+				if (!data.empty())
 				{
-					if (isLoop())
-					{
-						rewind();
-					}
-					else
-					{
-						playing = false;
-					}
+					string buffer;
+					ofBuffer ofbuf;
+					
+					istringstream ist(data);
+					
+					size_t len = 0;
+					
+					ist.read((char*)&len, sizeof(size_t));
+					buffer.resize(len);
+					ist.read((char*)buffer.data(), len);
+					
+					ofbuf.set(buffer.data(), buffer.size());
+					
+					ofLoadImage(colorImage.getPixelsRef(), ofbuf);
+					colorImage.update();
+					
+					
+					ist.read((char*)&len, sizeof(size_t));
+					buffer.resize(len);
+					ist.read((char*)buffer.data(), len);
+					
+					ofbuf.set(buffer.data(), buffer.size());
+					
+					ofLoadImage(depthImage.getPixelsRef(), ofbuf);
+					depthImage.update();
+					
+					frameNum++;
+					frameNew = true;
 				}
-				
-				string data;
-				string buffer;
-				ofBuffer ofbuf;
-				getData(data);
-				
-				istringstream ist(data);
-				
-				size_t len = 0;
-				
-				ist.read((char*)&len, sizeof(size_t));
-				buffer.resize(len);
-				ist.read((char*)buffer.data(), len);
-				
-				ofbuf.set(buffer.data(), buffer.size());
-				
-				ofLoadImage(colorImage.getPixelsRef(), ofbuf);
-				colorImage.update();
-
-				
-				ist.read((char*)&len, sizeof(size_t));
-				buffer.resize(len);
-				ist.read((char*)buffer.data(), len);
-				
-				ofbuf.set(buffer.data(), buffer.size());
-				
-				ofLoadImage(depthImage.getPixelsRef(), ofbuf);
-				depthImage.update();
 			}
 		}
 		

@@ -141,6 +141,7 @@ namespace ofxKinectStream
 		Player()
 		{
 			frameNum = 0;
+			rate = 1;
 			playing = false;
 		}
 
@@ -164,11 +165,13 @@ namespace ofxKinectStream
 		
 		void play()
 		{
+			rate = 1;
 			playing = true;
 		}
 		
 		void stop()
 		{
+			rate = 0;
 			playing = false;
 		}
 		
@@ -202,7 +205,7 @@ namespace ofxKinectStream
 			
 			if (playing)
 			{
-				playHeadTime += ofGetLastFrameTime();
+				playHeadTime += ofGetLastFrameTime() * rate;
 				
 				string data;
 
@@ -273,6 +276,12 @@ namespace ofxKinectStream
 		void setLoop(bool yn) { loop = yn; }
 		bool isLoop() const { return loop; }
 		
+		float getPlayHeadTime() { return playHeadTime; }
+		void setPlayHeadTime(float t) { playHeadTime = t; }
+		
+		float getRate() { return rate; }
+		void setRate(float v) { rate = v; }
+		
 	private:
 		
 		bool playing, frameNew;
@@ -280,6 +289,7 @@ namespace ofxKinectStream
 		float playHeadTime;
 		int frameNum;
 		bool loop;
+		float rate;
 		
 	};
 	

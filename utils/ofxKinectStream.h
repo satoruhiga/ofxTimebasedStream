@@ -6,294 +6,189 @@
 
 namespace ofxKinectStream
 {
-	
-	class Recorder : public ofThread, public ofxTimebasedStream::Writer
+
+class Recorder : public ofThread, public ofxTimebasedStream::Writer
+{
+public:
+
+	Recorder()
 	{
-	public:
-		
-		Recorder()
+		colorImage.setUseTexture(false);
+		colorImage.allocate(640, 480, OF_IMAGE_COLOR);
+
+		depthImage.setUseTexture(false);
+		depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
+
+		recording = false;
+	}
+
+	~Recorder()
+	{
+		stop();
+	}
+
+	void start(string filename)
+	{
+		stop();
+
+		filename = ofToString(filename);
+		ofxTimebasedStream::Writer::open(filename);
+
+		recordingStartTime = ofGetElapsedTimef();
+		frameNum = 0;
+
+		startThread(true, false);
+
+		recording = true;
+	}
+
+	void stop()
+	{
+		recording = false;
+
+		if (isThreadRunning())
+			waitForThread();
+
+		ofxTimebasedStream::Writer::close();
+	}
+
+	inline bool isRecording()
+	{
+		return recording;
+	}
+
+	inline int getFrameNum() const
+	{
+		return frameNum;
+	}
+
+	void addFrame(unsigned char *rgb, unsigned short *raw_depth)
+	{
+		if (!isRecording()) return;
+
+		if (lock())
 		{
-			colorImage.setUseTexture(false);
-			colorImage.allocate(640, 480, OF_IMAGE_COLOR);
-			
-			depthImage.setUseTexture(false);
-			depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
-			
-			recording = false;
+			writeTimestamp = ofGetElapsedTimef() - recordingStartTime;
+
+			colorImage.setFromPixels(rgb, 640, 480, OF_IMAGE_COLOR);
+			depthImage.setFromPixels(raw_depth, 640, 480, OF_IMAGE_GRAYSCALE);
+
+			if (hasNewFrame) ofLogError("ofxKinectStream::Recorder", "drop frame");
+			hasNewFrame = true;
+
+			unlock();
 		}
-		
-		~Recorder()
+	}
+
+protected:
+
+	int frameNum;
+
+	bool hasNewFrame;
+	bool recording;
+
+	float recordingStartTime;
+
+	float writeTimestamp;
+	ofImage colorImage;
+	ofShortImage depthImage;
+
+	void threadedFunction()
+	{
+		while (isThreadRunning())
 		{
-			stop();
-		}
-		
-		void start(string filename)
-		{
-			stop();
-			
-			filename = ofToString(filename);
-			ofxTimebasedStream::Writer::open(filename);
-			
-			recordingStartTime = ofGetElapsedTimef();
-			frameNum = 0;
-			
-			startThread(true, false);
-			
-			recording = true;
-		}
-		
-		void stop()
-		{
-			recording = false;
-			
-			if (isThreadRunning())
-				waitForThread();
-			
-			ofxTimebasedStream::Writer::close();
-		}
-		
-		inline bool isRecording()
-		{
-			return recording;
-		}
-		
-		inline int getFrameNum() const
-		{
-			return frameNum;
-		}
-		
-		void addFrame(unsigned char *rgb, unsigned short *raw_depth)
-		{
-			if (!isRecording()) return;
-			
-			if (lock())
+			if (hasNewFrame && lock())
 			{
-				writeTimestamp = ofGetElapsedTimef() - recordingStartTime;
-				
-				colorImage.setFromPixels(rgb, 640, 480, OF_IMAGE_COLOR);
-				depthImage.setFromPixels(raw_depth, 640, 480, OF_IMAGE_GRAYSCALE);
-				
-				if (hasNewFrame) ofLogError("ofxKinectStream::Recorder", "drop frame");
-				hasNewFrame = true;
-				
+				size_t len;
+				ofBuffer buffer;
+				ostringstream ost;
+
+				ofSaveImage(colorImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_JPEG);
+				len = buffer.size();
+
+				ost.write((char*)&len, sizeof(size_t));
+				ost << buffer;
+
+				ofSaveImage(depthImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_TIFF);
+				len = buffer.size();
+
+				ost.write((char*)&len, sizeof(size_t));
+				ost << buffer;
+
+				write(writeTimestamp, ost.str());
+
+				hasNewFrame = false;
+				frameNum++;
+
 				unlock();
 			}
+
+			ofSleepMillis(1);
 		}
-		
-	protected:
-		
-		int frameNum;
-		
-		bool hasNewFrame;
-		bool recording;
-		
-		float recordingStartTime;
-		
-		float writeTimestamp;
-		ofImage colorImage;
-		ofShortImage depthImage;
-		
-		void threadedFunction()
-		{
-			while (isThreadRunning())
-			{
-				if (hasNewFrame && lock())
-				{
-					size_t len;
-					ofBuffer buffer;
-					ostringstream ost;
-					
-					ofSaveImage(colorImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_JPEG);
-					len = buffer.size();
-					
-					ost.write((char*)&len, sizeof(size_t));
-					ost << buffer;
+	}
 
-					
-					ofSaveImage(depthImage.getPixelsRef(), buffer, OF_IMAGE_FORMAT_TIFF);
-					len = buffer.size();
+};
 
-					ost.write((char*)&len, sizeof(size_t));
-					ost << buffer;
+class Player : public ofxTimebasedStream::BasePlayer
+{
+public:
 
-					write(writeTimestamp, ost.str());
-					
-					hasNewFrame = false;
-					frameNum++;
-					
-					unlock();
-				}
-				
-				ofSleepMillis(1);
-			}
-		}
-		
-	};
-	
-	
-	class Player : public ofxTimebasedStream::Reader
+	ofImage colorImage;
+	ofShortImage depthImage;
+
+	Player()
 	{
-	public:
-		
-		ofImage colorImage;
-		ofShortImage depthImage;
-		
-		Player()
-		{
-			frameNum = 0;
-			rate = 1;
-			playing = false;
-		}
+	}
 
-		~Player()
-		{
-			close();
-		}
-		
-		void open(string path)
-		{
-			ofxTimebasedStream::Reader::open(path);
-			
-			if (*this)
-			{
-				colorImage.allocate(640, 480, OF_IMAGE_COLOR);
-				depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
-			}
-			
-			rewind();
-		}
-		
-		void play()
-		{
-			rate = 1;
-			playing = true;
-		}
-		
-		void stop()
-		{
-			rate = 0;
-			playing = false;
-		}
-		
-		inline bool isPlaying() const
-		{
-			return playing;
-		}
-		
-		void rewind()
-		{
-			ofxTimebasedStream::Reader::rewind();
-			
-			playStartTime = ofGetElapsedTimef();
-			playHeadTime = 0;
-			frameNum = 0;
-		}
-		
-		inline bool isFrameNew() const
-		{
-			return frameNew;
-		}
-		
-		inline int getFrameNum() const
-		{
-			return frameNum;
-		}
-		
-		void update()
-		{
-			frameNew = false;
-			
-			if (playing)
-			{
-				playHeadTime += ofGetLastFrameTime() * rate;
-				
-				string data;
+	~Player()
+	{
+	}
 
-				// skip to seek head
-				while (playHeadTime > getTimestamp())
-				{
-					if (!nextFrame(data))
-					{
-						if (isLoop())
-						{
-							rewind();
-						}
-						else
-						{
-							playing = false;
-						}
-						
-						data.clear();
-						
-						break;
-					}
-				}
-				
-				if (!data.empty())
-				{
-					string buffer;
-					ofBuffer ofbuf;
-					
-					istringstream ist(data);
-					
-					size_t len = 0;
-					
-					ist.read((char*)&len, sizeof(size_t));
-					buffer.resize(len);
-					ist.read((char*)buffer.data(), len);
-					
-					ofbuf.set(buffer.data(), buffer.size());
-					
-					ofLoadImage(colorImage.getPixelsRef(), ofbuf);
-					colorImage.update();
-					
-					
-					ist.read((char*)&len, sizeof(size_t));
-					buffer.resize(len);
-					ist.read((char*)buffer.data(), len);
-					
-					ofbuf.set(buffer.data(), buffer.size());
-					
-					ofLoadImage(depthImage.getPixelsRef(), ofbuf);
-					depthImage.update();
-					
-					frameNum++;
-					frameNew = true;
-				}
-			}
-		}
-		
-		void draw(int x, int y)
-		{
-			colorImage.draw(x, y);
-		}
-		
-		void drawDepth(int x, int y)
-		{
-			depthImage.draw(x, y);
-		}
-		
-		void setLoop(bool yn) { loop = yn; }
-		bool isLoop() const { return loop; }
-		
-		float getPlayHeadTime() { return playHeadTime; }
-		void setPlayHeadTime(float t) { playHeadTime = t; }
-		
-		float getRate() { return rate; }
-		void setRate(float v) { rate = v; }
-		
-	private:
-		
-		bool playing, frameNew;
-		float playStartTime;
-		float playHeadTime;
-		int frameNum;
-		bool loop;
-		float rate;
-		
-	};
-	
+	void draw(int x, int y)
+	{
+		colorImage.draw(x, y);
+	}
+
+	void drawDepth(int x, int y)
+	{
+		depthImage.draw(x, y);
+	}
+
+protected:
+
+	void setup()
+	{
+		colorImage.allocate(640, 480, OF_IMAGE_COLOR);
+		depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
+	}
+
+	void update(const string &data)
+	{
+		string buffer;
+		ofBuffer ofbuf;
+
+		istringstream ist(data);
+
+		size_t len = 0;
+
+		ist.read((char*)&len, sizeof(size_t));
+		buffer.resize(len);
+		ist.read((char*)buffer.data(), len);
+
+		ofbuf.set(buffer.data(), buffer.size());
+
+		ofLoadImage(colorImage.getPixelsRef(), ofbuf);
+		colorImage.update();
+
+		ist.read((char*)&len, sizeof(size_t));
+		buffer.resize(len);
+		ist.read((char*)buffer.data(), len);
+
+		ofbuf.set(buffer.data(), buffer.size());
+
+		ofLoadImage(depthImage.getPixelsRef(), ofbuf);
+		depthImage.update();
+	}
+};
+
 }
-
-/*
-*/

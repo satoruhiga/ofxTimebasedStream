@@ -169,12 +169,14 @@ public:
 	{
 		rate = 1;
 		playing = true;
+		frameNew = false;
 	}
 
 	void stop()
 	{
 		rate = 0;
 		playing = false;
+		frameNew = false;
 	}
 
 	inline bool isPlaying() const
@@ -188,6 +190,7 @@ public:
 
 		playHeadTime = 0;
 		frameNum = 0;
+		frameNew = false;
 	}
 
 	void update()

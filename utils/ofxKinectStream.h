@@ -161,31 +161,31 @@ protected:
 		colorImage.allocate(640, 480, OF_IMAGE_COLOR);
 		depthImage.allocate(640, 480, OF_IMAGE_GRAYSCALE);
 	}
-
-	void update(const string &data)
+	
+	void onFrameNew(const string &data)
 	{
 		string buffer;
 		ofBuffer ofbuf;
-
+		
 		istringstream ist(data);
-
+		
 		size_t len = 0;
-
+		
 		ist.read((char*)&len, sizeof(size_t));
 		buffer.resize(len);
 		ist.read((char*)buffer.data(), len);
-
+		
 		ofbuf.set(buffer.data(), buffer.size());
-
+		
 		ofLoadImage(colorImage.getPixelsRef(), ofbuf);
 		colorImage.update();
-
+		
 		ist.read((char*)&len, sizeof(size_t));
 		buffer.resize(len);
 		ist.read((char*)buffer.data(), len);
-
+		
 		ofbuf.set(buffer.data(), buffer.size());
-
+		
 		ofLoadImage(depthImage.getPixelsRef(), ofbuf);
 		depthImage.update();
 	}

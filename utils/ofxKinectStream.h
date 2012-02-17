@@ -36,6 +36,7 @@ public:
 
 		recordingStartTime = ofGetElapsedTimef();
 		frameNum = 0;
+		hasNewFrame = false;
 
 		startThread(true, false);
 
@@ -135,14 +136,6 @@ public:
 
 	ofImage colorImage;
 	ofShortImage depthImage;
-
-	Player()
-	{
-	}
-
-	~Player()
-	{
-	}
 
 	void draw(int x, int y)
 	{

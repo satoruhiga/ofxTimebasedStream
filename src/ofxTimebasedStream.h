@@ -20,7 +20,7 @@ class Writer
 
 public:
 
-	~Writer()
+	virtual ~Writer()
 	{
 		close();
 	}
@@ -32,6 +32,8 @@ public:
 		path = ofToDataPath(path_);
 		ofs.open(path.c_str(), ios::out | ios::binary);
 
+		offset = 0;
+		
 		if (!ofs) return false;
 
 		return true;
@@ -76,7 +78,7 @@ public:
 	{
 	}
 
-	~Reader()
+	virtual ~Reader()
 	{
 		close();
 	}
@@ -88,6 +90,8 @@ public:
 		path = ofToDataPath(path_);
 		ifs.open(path.c_str(), ios::in | ios::binary);
 
+		offset = 0;
+		
 		if (!ifs) return false;
 
 		rewind();

@@ -86,7 +86,7 @@ public:
 		close();
 	}
 
-	bool open(string path_)
+	bool load(string path_)
 	{
 		close();
 
@@ -101,6 +101,8 @@ public:
 
 		return true;
 	}
+	
+	inline bool open(string path) { return load(path); } // alias
 
 	void close()
 	{
@@ -159,15 +161,22 @@ public:
 
 	BasePlayer() : frameNum(0), rate(1), playing(false), frameNew(false), loop(false), needUpdate(true) {}
 
-	void open(string path)
+	bool load(string path)
 	{
-		ofxTimebasedStream::Reader::open(path);
+		if (!ofxTimebasedStream::Reader::load(path)) return false;
 
 		if (*this)
+		{
 			setup();
-
-		rewind();
+			rewind();
+			
+			return true;
+		}
+		
+		return false;
 	}
+	
+	inline bool open(string path) { return load(path); }
 
 	virtual ~BasePlayer()
 	{

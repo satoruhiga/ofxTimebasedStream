@@ -4,6 +4,7 @@
 
 namespace ofxTimebasedStream
 {
+
 struct Packet
 {
 	float timestamp;
@@ -76,6 +77,8 @@ public:
 
 	Reader()
 	{
+		p.timestamp = 0;
+		p.length = 0;
 	}
 
 	virtual ~Reader()
@@ -137,6 +140,8 @@ public:
 		return true;
 	}
 
+protected:
+	
 	inline bool isEof()
 	{
 		return ifs.eof();
@@ -152,7 +157,7 @@ class BasePlayer : public Reader
 {
 public:
 
-	BasePlayer() : frameNum(0), rate(1), playing(false), frameNew(false), loop(false) {}
+	BasePlayer() : frameNum(0), rate(1), playing(false), frameNew(false), loop(false), needUpdate(true) {}
 
 	void open(string path)
 	{
@@ -195,6 +200,8 @@ public:
 		playHeadTime = 0;
 		frameNum = 0;
 		frameNew = false;
+		
+		needUpdate = true;
 	}
 
 	void update()
@@ -203,10 +210,15 @@ public:
 
 		if (playing)
 		{
-			playHeadTime += ofGetLastFrameTime() * rate;
-
+			setPlayHeadTime(playHeadTime + ofGetLastFrameTime() * rate);
+		}
+		
+		if (needUpdate)
+		{
+			needUpdate = false;
+			
 			string data;
-
+			
 			// skip to seek head
 			while (playHeadTime > getTimestamp())
 			{
@@ -219,18 +231,19 @@ public:
 					else
 					{
 						playing = false;
+						rewind();
 					}
-
+					
 					data.clear();
-
+					
 					break;
 				}
 			}
-
+			
 			if (!data.empty())
 			{
 				onFrameNew(data);
-
+				
 				frameNum++;
 				frameNew = true;
 			}
@@ -244,7 +257,15 @@ public:
 	inline void setLoop(bool yn) { loop = yn; }
 
 	inline float getPlayHeadTime() const { return playHeadTime; }
-	inline void setPlayHeadTime(float t) { playHeadTime = t; }
+	inline void setPlayHeadTime(float t)
+	{
+		if (t == 0 || t < playHeadTime)
+			rewind();
+		
+		playHeadTime = t;
+		
+		needUpdate = true;
+	}
 
 	inline float getRate() const { return rate; }
 	inline void setRate(float v) { rate = v; }
@@ -261,6 +282,7 @@ private:
 	int frameNum;
 	bool loop;
 	float rate;
+	bool needUpdate;
 
 };
 

@@ -90,12 +90,16 @@ public:
 	{
 		close();
 
+		offset = 0;
 		path = ofToDataPath(path_);
+		
 		ifs.open(path.c_str(), ios::in | ios::binary);
 
-		offset = 0;
-		
-		if (!ifs) return false;
+		if (!ifs)
+		{
+			ofLogError("ofxTimebasedStream", "file not found: " + path_);
+			return false;
+		}
 
 		rewind();
 
@@ -130,7 +134,7 @@ public:
 
 	bool nextFrame(string &data)
 	{
-		if (isEof()) return false;
+		if (*this == false || isEof()) return false;
 
 		ifs.read((char*)&p.timestamp, sizeof(float));
 		ifs.read((char*)&p.length, sizeof(size_t));
@@ -215,6 +219,8 @@ public:
 
 	void update()
 	{
+		if (*this == false) return;
+		
 		frameNew = false;
 
 		if (playing)
@@ -268,6 +274,8 @@ public:
 	inline float getPlayHeadTime() const { return playHeadTime; }
 	inline void setPlayHeadTime(float t)
 	{
+		if (*this == false) return;
+		
 		if (t == 0 || t < playHeadTime)
 			rewind();
 		
